@@ -18,8 +18,20 @@ export async function listOrders(
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .range(from, to);
+  if (error?.code === OUT_OF_RANGE) return { rows: [], total: await countOrders(client, status) };
   if (error) throw new Error(error.message);
   return { rows: (data ?? []) as unknown as OrderRow[], total: count ?? 0 };
+}
+
+// PostgREST responde 416 (PGRST103) si el offset supera el total; la pantalla necesita el total para redirigir.
+const OUT_OF_RANGE = "PGRST103";
+
+async function countOrders(client: OrdersClient, status: OrderStatus | null): Promise<number> {
+  let q = client.from("orders").select("id", { count: "exact", head: true });
+  if (status) q = q.eq("status", status);
+  const { count, error } = await q;
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 export function orderBatchFetcher(client: OrdersClient, status: OrderStatus | null) {

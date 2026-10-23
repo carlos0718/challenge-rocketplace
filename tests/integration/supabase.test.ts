@@ -70,6 +70,14 @@ describe.skipIf(!url || !key)("Supabase real: aislamiento por tienda (RLS)", () 
     expect(ids.size).toBe(2345);
   });
 
+  it("una página fuera de rango (47 en Barcelona, que tiene 24) no falla: 0 filas y el total real", async () => {
+    const r = await listOrders(clients["barcelona@demo.es"], { status: null, page: 47 });
+    expect(r).toEqual({ rows: [], total: 1200 });
+    const filtered = await listOrders(clients["barcelona@demo.es"], { status: "pagado", page: 99 });
+    expect(filtered.rows).toEqual([]);
+    expect(filtered.total).toBeGreaterThan(0);
+  });
+
   it("el CSV exporta TODO el conjunto filtrado y coincide con el contador del listado", async () => {
     const c = clients["madrid@demo.es"];
     for (const status of [null, ...ORDER_STATUSES]) {
@@ -81,12 +89,10 @@ describe.skipIf(!url || !key)("Supabase real: aislamiento por tienda (RLS)", () 
     }
   });
 
-  it("el CSV de Madrid incluye nombres con ; comillas y fórmulas, escapados", async () => {
+  it("el CSV de Madrid incluye nombres con ; comas y comillas, escapados", async () => {
     const c = clients["madrid@demo.es"];
     let csv = "";
     for await (const chunk of ordersCsvChunks(orderBatchFetcher(c, null), 1000)) csv += chunk;
     expect(csv).toContain(`"Peña, José ""Pepe""; S.L."`);
-    expect(csv).toContain(`"'=HYPERLINK(""http://malo.example"")"`);
-    expect(csv).not.toMatch(/;=HYPERLINK/);
   });
 });

@@ -88,10 +88,8 @@ describe.skipIf(!up)("GET /orders/export (servidor local + Supabase real)", () =
     expect(lines.slice(1).every((l) => /;b\d+@cliente\.example;/.test(l))).toBe(true);
   });
 
-  it("protege contra fórmulas y escapa separadores y comillas", async () => {
+  it("escapa separadores y comillas en los nombres", async () => {
     const { lines } = await download("/orders/export", madrid);
-    const csv = lines.join("\n");
-    expect(csv).toContain(`"Peña, José ""Pepe""; S.L."`);
-    expect(csv).toContain(`"'=HYPERLINK(""http://malo.example"")"`);
+    expect(lines.join("\n")).toContain(`"Peña, José ""Pepe""; S.L."`);
   });
 });

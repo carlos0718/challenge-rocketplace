@@ -4,7 +4,11 @@ import { ORDER_COLUMNS, listOrders, orderBatchFetcher, type OrdersClient } from 
 type Call = [string, ...unknown[]];
 
 /** Cliente falso con la forma de supabase-js: registra la cadena de llamadas y es "thenable". */
-function fakeClient(result: { data: unknown[] | null; error: { message: string } | null; count?: number | null }) {
+type Result = { data: unknown[] | null; error: { message: string; code?: string } | null; count?: number | null };
+
+/** Acepta un resultado fijo o una secuencia (una consulta por elemento; el último se repite). */
+function fakeClient(input: Result | Result[]) {
+  const queue = Array.isArray(input) ? [...input] : [input];
   const calls: Call[] = [];
   const builder: Record<string, unknown> = {};
   for (const m of ["select", "eq", "order", "range"]) {
@@ -13,7 +17,7 @@ function fakeClient(result: { data: unknown[] | null; error: { message: string }
       return builder;
     };
   }
-  builder.then = (res: (v: unknown) => unknown) => Promise.resolve(res(result));
+  builder.then = (res: (v: unknown) => unknown) => Promise.resolve(res(queue.length > 1 ? queue.shift() : queue[0]));
   const client = { from: (t: string) => (calls.push(["from", t]), builder) } as unknown as OrdersClient;
   return { client, calls };
 }
@@ -67,6 +71,36 @@ describe("listOrders", () => {
   it("propaga el error de la base", async () => {
     const { client } = fakeClient({ data: null, error: { message: "boom" } });
     await expect(listOrders(client, { status: null, page: 1 })).rejects.toThrow("boom");
+  });
+
+  describe("página fuera de rango (PostgREST responde 416 / PGRST103)", () => {
+    const outOfRange: Result = { data: null, error: { message: "Requested range not satisfiable", code: "PGRST103" } };
+
+    it("no falla: devuelve 0 filas y el total real para que la pantalla redirija a la última página", async () => {
+      const { client } = fakeClient([outOfRange, { data: null, error: null, count: 1200 }]);
+      expect(await listOrders(client, { status: null, page: 47 })).toEqual({ rows: [], total: 1200 });
+    });
+
+    it("el total se pide con una consulta de solo conteo (head) y respeta el filtro de estado", async () => {
+      const { client, calls } = fakeClient([outOfRange, { data: null, error: null, count: 240 }]);
+      await listOrders(client, { status: "pagado", page: 99 });
+      const second = calls.slice(calls.findIndex((c) => c[0] === "range") + 1);
+      expect(second).toEqual([
+        ["from", "orders"],
+        ["select", "id", { count: "exact", head: true }],
+        ["eq", "status", "pagado"],
+      ]);
+    });
+
+    it("otros errores distintos de PGRST103 siguen propagándose", async () => {
+      const { client } = fakeClient({ data: null, error: { message: "permission denied", code: "42501" } });
+      await expect(listOrders(client, { status: null, page: 1 })).rejects.toThrow("permission denied");
+    });
+
+    it("si falla también el conteo, propaga ese error", async () => {
+      const { client } = fakeClient([outOfRange, { data: null, error: { message: "count roto" }, count: null }]);
+      await expect(listOrders(client, { status: null, page: 47 })).rejects.toThrow("count roto");
+    });
   });
 });
 

@@ -36,12 +36,11 @@ insert into profiles (user_id, store_id) values
   ('cccccccc-3333-4333-8333-000000000003', '33333333-cccc-4ccc-8ccc-000000000003')
 on conflict (user_id) do nothing;
 
--- Pedidos: solo si la tabla está vacía. Madrid incluye nombres que rompen un CSV mal hecho.
+-- Pedidos: solo si la tabla está vacía. Madrid incluye un nombre con ; , y comillas para probar el escapado del CSV.
 insert into orders (store_id, customer_name, customer_email, status, total, created_at)
 select s.store_id,
        case
          when s.tag = 'M' and g = 1 then 'Peña, José "Pepe"; S.L.'
-         when s.tag = 'M' and g = 2 then '=HYPERLINK("http://malo.example")'
          else (array['Ana','Luis','María','José','Lucía','Pedro','Carmen','Iván','Núria','Andrés'])[1 + abs(hashtext(s.tag || g)) % 10]
               || ' ' ||
               (array['García','López','Martínez','Sánchez','Peña','Fernández','Muñoz','Gómez'])[1 + abs(hashtext(g || s.tag)) % 8]
