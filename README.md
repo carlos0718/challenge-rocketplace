@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pedidos multi-tienda (MVP)
 
-## Getting Started
+Listado de pedidos de varias tiendas en una misma base de datos, con:
 
-First, run the development server:
+- **Paginación de 50 en 50** y **filtro por estado en la URL** (`/orders?status=pagado&page=2`).
+- **Descarga CSV del conjunto filtrado completo** (no solo de la página), listo para abrir en Excel en español: separador `;`, coma decimal, fechas `dd/mm/aaaa`, BOM UTF-8 y protección frente a fórmulas.
+- **Aislamiento por tienda garantizado por la base de datos** (RLS de Postgres), no por la pantalla: el código nunca filtra por tienda.
+
+Stack: Next.js (App Router, Cache Components) + TypeScript + Supabase (Postgres + Auth).
+
+## Puesta en marcha
 
 ```bash
+npm install
+cp .env.example .env.local        # rellena URL, anon key y DATABASE_URL
+psql "$DATABASE_URL" --single-transaction -f supabase/migrations/0001_init.sql
+psql "$DATABASE_URL" --single-transaction -f supabase/seed.sql   # solo desarrollo
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Usuarios demo (solo desarrollo): `madrid@demo.es`, `barcelona@demo.es`, `valencia@demo.es`, contraseña `Demo1234!`.
+Cada uno ve únicamente los pedidos de su tienda (2.345, 1.200 y 180).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Seguridad
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `revoke all` + `grant select` a `authenticated`; `anon` no tiene permisos. La app es de solo lectura.
+- Políticas RLS en `stores`, `profiles` y `orders` basadas en `auth.uid()`.
+- La app usa solo la `anon key` con el JWT del usuario; la `service_role` no se usa nunca.
 
-## Learn More
+## Tests (TDD)
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm test
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Capa | Qué comprueba |
+| --- | --- |
+| `tests/db` | RLS y esquema sobre Postgres real en memoria (PGlite) |
+| `tests/unit` | URL, paginación, consultas, CSV, nombre de archivo y stream |
+| `tests/integration` | Mismo aislamiento contra Supabase real y la ruta `/orders/export` contra `npm run dev` (se omiten sin `.env.local` o sin servidor) |
